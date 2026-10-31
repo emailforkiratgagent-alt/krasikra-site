@@ -7,6 +7,9 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore: # docs-only commits do not redeploy
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
