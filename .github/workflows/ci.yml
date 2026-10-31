@@ -87,7 +87,8 @@ jobs:
 
       - name: Smoke test of the production server
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.migrate.outcome == 'success' }}
-        run: $RUN smoke bash .github/scripts/smoke.sh
+        timeout-minutes: 12
+        run: $RUN smoke timeout 600 bash .github/scripts/smoke.sh
 
   docker:
     name: Docker image

@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: regen-${{ github.ref }}
@@ -78,14 +79,12 @@ jobs:
             name=$(printf '%s' "$COMMIT_MESSAGE" | sed -n 's/.*\[migration:\([a-z0-9_-]*\)\].*/\1/p' | head -1)
           fi
           if [ -n "$name" ]; then
-            pnpm payload migrate:create "$name" --skip-empty --force-accept-warning
+            pnpm payload migrate:create "$name" --force-accept-warning
           else
             echo "No migration requested"
           fi
 
       - name: Commit
-        env:
-          BRANCH: ${{ github.ref_name }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -97,3 +96,8 @@ jobs:
           git status --short
           git commit -m "chore: regenerate lockfile, types and import map"
           git push origin "HEAD:refs/heads/$BRANCH"
+          # Pushes made with GITHUB_TOKEN do not trigger CI; start it explicitly.
+          gh workflow run ci.yml --ref "$BRANCH" || echo "Could not start CI; push any commit to run it"
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}

@@ -35,12 +35,14 @@ function update(data: Record<string, unknown>, user: AnyUser = admin) {
 describe('Интеграция X.Label (global)', () => {
   beforeAll(async () => {
     payload = await getPayload({ config })
+    startedEmpty = (await payload.count({ collection: 'users', overrideAccess: true })).totalDocs === 0
+    // On an empty database the first-user hook must turn this account into an admin.
     admin = await payload.create({
       collection: 'users',
       data: {
         email: `admin-${Date.now()}@test.local`,
         password: 'Test-password-1',
-        roles: ['editor'],
+        roles: startedEmpty ? ['editor'] : ['admin'],
       } as never,
       overrideAccess: true,
     })
