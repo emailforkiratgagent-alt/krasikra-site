@@ -1,0 +1,97 @@
+# Regenerates files that are produced by tools: pnpm-lock.yaml, X.Label API types,
+# the admin import map, Payload types and (on request) a database migration.
+#
+# Trigger: push a commit to a non-main branch whose message contains "[regen]";
+# add "[migration:<name>]" to also create a migration for schema changes.
+# Or run manually (Actions → Regenerate → Run workflow).
+#
+# Pushes made by this workflow do not start CI; push any follow-up commit to run it.
+name: Regenerate
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+    inputs:
+      migration:
+        description: Migration name (empty — no migration)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regen-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[regen]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: krasikra_regen
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/krasikra_regen
+      PAYLOAD_SECRET: regen-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install and update lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Generate
+        run: |
+          pnpm run generate:xlabel-types
+          pnpm run generate:importmap
+          pnpm run generate:types
+
+      - name: Migration
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          INPUT_MIGRATION: ${{ github.event.inputs.migration }}
+        run: |
+          name="$INPUT_MIGRATION"
+          if [ -z "$name" ]; then
+            name=$(printf '%s' "$COMMIT_MESSAGE" | sed -n 's/.*\[migration:\([a-z0-9_-]*\)\].*/\1/p' | head -1)
+          fi
+          if [ -n "$name" ]; then
+            pnpm payload migrate:create "$name" --skip-empty --force-accept-warning
+          else
+            echo "No migration requested"
+          fi
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git status --short
+          git commit -m "chore: regenerate lockfile, types and import map"
+          git push origin "HEAD:${{ github.ref_name }}"
