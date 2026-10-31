@@ -34,12 +34,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build
-        run: docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE_NAME:ci" .
+        run: docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg GIT_SHA="$GITHUB_SHA" -t "$IMAGE_NAME:ci" .
 
       - name: Smoke test
         run: |
-          docker run -d --name web -p 8080:8080 "$IMAGE_NAME:ci"
+          # Non-default port proves the app honours PORT.
+          docker run -d --name web -e PORT=9090 -p 8080:9090 "$IMAGE_NAME:ci"
           for _ in $(seq 1 20); do curl -fsS http://localhost:8080/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8080/healthz | grep -q "$GITHUB_SHA"
           curl -fsSI http://localhost:8080/ | tee headers.txt
           grep -qi '^x-robots-tag: noindex' headers.txt
 
@@ -73,7 +75,7 @@ jobs:
         run: |
           tag="$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA::7}"
           image="$REGISTRY/$IMAGE_NAME:$tag"
-          docker build --platform linux/amd64 --provenance=false --sbom=false -t "$image" .
+          docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg GIT_SHA="$GITHUB_SHA" -t "$image" .
           docker push "$image"
           echo "url=$image" >> "$GITHUB_OUTPUT"
 
@@ -96,8 +98,11 @@ jobs:
             PAYLOAD_SECRET=${{ env.LOCKBOX_SECRET }}/latest/PAYLOAD_SECRET
             SETTINGS_ENCRYPTION_KEY=${{ env.LOCKBOX_SECRET }}/latest/SETTINGS_ENCRYPTION_KEY
 
-      - name: Check the stand
+      - name: Check the stand runs this commit
         run: |
-          for _ in $(seq 1 10); do curl -fsS "$STAND_URL/healthz" && exit 0; sleep 6; done
-          echo "::error::Stand did not answer on /healthz"
+          for _ in $(seq 1 20); do
+            curl -fsS "$STAND_URL/healthz" | grep -q "$GITHUB_SHA" && { echo "Stand runs $GITHUB_SHA"; exit 0; }
+            sleep 6
+          done
+          echo "::error::Stand does not report commit $GITHUB_SHA on /healthz"
           exit 1

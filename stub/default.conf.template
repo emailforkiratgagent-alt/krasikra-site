@@ -14,7 +14,7 @@ server {
 
     location = /healthz {
         default_type text/plain;
-        return 200 "ok\n";
+        return 200 "ok ${GIT_SHA}\n";
     }
 
     location / {
