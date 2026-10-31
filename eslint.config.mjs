@@ -21,6 +21,7 @@ const eslintConfig = [
   {
     ignores: [
       '.next/',
+      '.github/',
       'node_modules/',
       'src/payload-types.ts',
       'src/payload-generated-schema.ts',

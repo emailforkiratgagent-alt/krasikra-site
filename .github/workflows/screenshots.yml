@@ -1,0 +1,109 @@
+# Desktop and mobile screenshots for pull request descriptions.
+# Builds the site, starts it on an empty database and saves PNGs to the "screenshots"
+# branch under pr-<number>/ (or manual-<run>/ for a manual run without a PR number).
+name: Screenshots
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number (folder name)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    # Pull requests from forks get a read-only token and cannot push the images.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: krasikra_shots
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/krasikra_shots
+      DATABASE_SSL: disable
+      PAYLOAD_SECRET: screenshots-only
+      SERVER_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install and build
+        run: |
+          key="$(openssl rand -base64 32)"
+          echo "::add-mask::$key"
+          echo "SETTINGS_ENCRYPTION_KEY=$key" >> "$GITHUB_ENV"
+          export SETTINGS_ENCRYPTION_KEY="$key"
+          pnpm install --frozen-lockfile
+          pnpm run build
+          cp -r public .next/standalone/
+          cp -r .next/static .next/standalone/.next/
+
+      - name: Install Playwright
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw
+          npm init -y >/dev/null
+          npm install --no-fund --no-audit playwright@1
+          npx playwright install --with-deps chromium
+
+      - name: Start site and take screenshots
+        run: |
+          (cd .next/standalone && NODE_ENV=production PORT=8080 HOSTNAME=127.0.0.1 node server.js >/tmp/server.log 2>&1 &)
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8080/healthz >/dev/null && break; sleep 1; done
+          # First admin request applies migrations; give it time.
+          curl -fsS --max-time 120 -o /dev/null http://127.0.0.1:8080/admin/login
+          cp .github/scripts/screenshots.mjs /tmp/pw/
+          cd /tmp/pw && BASE=http://127.0.0.1:8080 OUT=/tmp/shots \
+            PEM_FILE="$GITHUB_WORKSPACE/docs/xlabel/web_public_test.pem" node screenshots.mjs
+
+      - name: Server log
+        if: failure()
+        run: tail -n 80 /tmp/server.log || true
+
+      - name: Publish to the screenshots branch
+        env:
+          FOLDER: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || (github.event.inputs.pr && format('pr-{0}', github.event.inputs.pr)) || format('manual-{0}', github.run_id) }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin refs/heads/screenshots >/dev/null; then
+            git fetch --depth 1 origin screenshots
+            git worktree add /tmp/shots-branch FETCH_HEAD
+          else
+            git worktree add --detach /tmp/shots-branch
+            (cd /tmp/shots-branch && git checkout --orphan screenshots && git rm -rfq .)
+          fi
+          cd /tmp/shots-branch
+          rm -rf "$FOLDER" && mkdir -p "$FOLDER"
+          cp /tmp/shots/*.png "$FOLDER/"
+          git add -A
+          git commit -qm "screenshots: $FOLDER @ ${GITHUB_SHA::7}" || { echo "No changes"; exit 0; }
+          git push origin HEAD:refs/heads/screenshots
+          echo "Saved to branch screenshots, folder $FOLDER" >> "$GITHUB_STEP_SUMMARY"

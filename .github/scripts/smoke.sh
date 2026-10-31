@@ -45,18 +45,27 @@ start() {
   return 1
 }
 
+port_busy() {
+  # Any HTTP answer (even 503 during graceful shutdown) means the old server still holds the port.
+  "${CURL[@]}" --max-time 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
+}
+
 stop() {
   pkill -f "node server.js" || true
-  # Next.js shuts down gracefully; wait until the ports are really free.
+  # Next.js shuts down gracefully: wait until the processes have exited and the ports are free.
   for _ in $(seq 1 30); do
-    if ! "${CURL[@]}" -fo /dev/null "$BASE/healthz" 2>/dev/null &&
-      ! "${CURL[@]}" -fo /dev/null "http://127.0.0.1:8081/healthz" 2>/dev/null; then
+    if ! pgrep -f "node server.js" >/dev/null && ! port_busy 8080 && ! port_busy 8081; then
       return 0
     fi
     sleep 1
   done
   pkill -9 -f "node server.js" || true
-  sleep 1
+  for _ in $(seq 1 10); do
+    pgrep -f "node server.js" >/dev/null || return 0
+    sleep 1
+  done
+  echo "Old server processes did not exit"
+  return 1
 }
 
 expect_code() {
@@ -95,6 +104,7 @@ stop
 
 # 3. Production mode: NOINDEX=false removes the header.
 start indexed 8080 NOINDEX=false
+[ "$(pgrep -fc "node server.js")" -ge 1 ] || { echo "indexed server is not running"; exit 1; }
 "${CURL[@]}" -fI "$BASE/" | tee /tmp/home2.txt
 if grep -qi '^x-robots-tag' /tmp/home2.txt; then
   echo "X-Robots-Tag must be absent with NOINDEX=false"
