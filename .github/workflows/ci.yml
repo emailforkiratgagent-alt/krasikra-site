@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: krasikra_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/krasikra_test
+      PAYLOAD_SECRET: ci-only-secret-not-used-anywhere-else
+      SERVER_URL: http://127.0.0.1:8080
+      RUN: bash .github/scripts/run.sh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Encryption key for tests
+        run: echo "SETTINGS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: Install
+        id: install
+        run: $RUN install pnpm install --frozen-lockfile
+
+      - name: Generated files are up to date
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN generated-files bash .github/scripts/check-generated.sh
+
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN lint pnpm run lint
+
+      - name: Type check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN typecheck pnpm run typecheck
+
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN unit-tests pnpm run test:unit
+
+      - name: Apply migrations to an empty database
+        id: migrate
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN migrate pnpm run migrate
+
+      - name: Integration tests (PostgreSQL)
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
+        run: $RUN integration-tests pnpm run test:int
+
+      - name: Build
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN build pnpm run build
+
+      - name: Smoke test of the production server
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        timeout-minutes: 12
+        run: $RUN smoke timeout 600 bash .github/scripts/smoke.sh
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN: bash .github/scripts/run.sh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image (linux/amd64, as for Yandex Cloud)
+        run: >-
+          $RUN docker-build docker build --progress=plain --platform linux/amd64
+          --build-arg APP_VERSION=${{ github.sha }} -t krasikra-web:ci .
+
+      - name: Container starts and answers on PORT
+        run: |
+          docker run -d --name web -p 8080:8080 \
+            -e PAYLOAD_SECRET=ci -e SETTINGS_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+            -e DATABASE_URL=postgres://none:none@127.0.0.1:1/none -e DATABASE_SSL=disable \
+            -e SERVER_URL=http://127.0.0.1:8080 \
+            krasikra-web:ci
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/healthz | grep -q '"status":"ok"'
+          curl -fsSI http://127.0.0.1:8080/healthz | grep -qi '^x-robots-tag: noindex'
+          test "$(docker exec web id -u)" != "0"
+          docker image inspect krasikra-web:ci --format 'Image size: {{.Size}} bytes'
+
+      - name: Container logs
+        if: failure()
+        run: $RUN container-logs bash -c 'docker logs web; exit 1' || true
