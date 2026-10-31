@@ -12,6 +12,10 @@ if [ -n "$(git status --porcelain)" ]; then
   git status --porcelain
   git --no-pager diff --stat
   git --no-pager diff | head -n 80
+  for f in $(git ls-files --others --exclude-standard -- 'src/migrations/*.ts'); do
+    echo "--- $f"
+    head -n 60 "$f"
+  done
   # Restore the tree so the following CI steps test the committed code.
   git checkout -- .
   git clean -fdq -- src

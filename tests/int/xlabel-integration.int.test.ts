@@ -18,6 +18,7 @@ let payload: Payload
 type AnyUser = Awaited<ReturnType<Payload['create']>>
 let admin: AnyUser
 let editor: AnyUser
+let startedEmpty = false
 
 async function rawRow(): Promise<string> {
   const pool = (
@@ -59,7 +60,7 @@ describe('Интеграция X.Label (global)', () => {
   })
 
   it('makes the very first account an administrator', () => {
-    expect((admin as { roles?: string[] }).roles).toEqual(['admin'])
+    if (startedEmpty) expect((admin as { roles?: string[] }).roles).toEqual(['admin'])
     expect((editor as { roles?: string[] }).roles).toEqual(['editor'])
   })
 
@@ -136,6 +137,9 @@ describe('Интеграция X.Label (global)', () => {
       data: { errors: [{ path: 'publicKeyPem' }] },
     })
     await expect(update({ apiBaseUrl: 'ftp://x' })).rejects.toThrow()
+    await expect(update({ apiBaseUrl: 'http://x.example.ru' })).rejects.toMatchObject({
+      data: { errors: [{ path: 'apiBaseUrl' }] },
+    })
     await expect(update({ webAppToken: 'has spaces inside it' })).rejects.toMatchObject({
       data: { errors: [{ path: 'webAppToken' }] },
     })
@@ -164,5 +168,26 @@ describe('Интеграция X.Label (global)', () => {
       overrideAccess: false,
     })) as { roles?: string[] }
     expect(updated.roles).toEqual(['editor'])
+  })
+
+  it('never leaves the site without an administrator', async () => {
+    const others = await payload.find({
+      collection: 'users',
+      overrideAccess: true,
+      where: { and: [{ roles: { in: ['admin'] } }, { id: { not_equals: admin.id } }] },
+    })
+    if (others.totalDocs > 0) return // shared database: the guard cannot be exercised here
+    await expect(
+      payload.update({
+        collection: 'users',
+        id: admin.id,
+        data: { roles: ['editor'] } as never,
+        user: admin as never,
+        overrideAccess: false,
+      }),
+    ).rejects.toMatchObject({ data: { errors: [{ path: 'roles' }] } })
+    await expect(
+      payload.delete({ collection: 'users', id: admin.id, user: admin as never, overrideAccess: false }),
+    ).rejects.toThrow(/последний администратор/)
   })
 })

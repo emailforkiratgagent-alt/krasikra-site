@@ -5,7 +5,7 @@
 #
 # Runtime environment (set on the container revision, never baked into the image):
 #   DATABASE_URL, DATABASE_CA_CERT, PAYLOAD_SECRET, SETTINGS_ENCRYPTION_KEY,
-#   NEXT_PUBLIC_SERVER_URL, NOINDEX (true on the test stand), PORT (default 8080).
+#   SERVER_URL, NOINDEX (true on the test stand), PORT (default 8080).
 
 ARG NODE_IMAGE=node:24-alpine
 

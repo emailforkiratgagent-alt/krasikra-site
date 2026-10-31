@@ -7,20 +7,14 @@ import { fileURLToPath } from 'url'
 
 import { Users } from './collections/Users'
 import { XLabelIntegration } from './globals/XLabelIntegration'
+import { migrateWithLock } from './lib/db/migrateWithLock'
+import { isProductionRuntime, resolveDatabaseSsl, resolveServerUrl } from './lib/db/runtimeEnv'
 import { migrations } from './migrations'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
-const serverURL = process.env.NEXT_PUBLIC_SERVER_URL?.replace(/\/+$/, '') || ''
-
-/**
- * Yandex Managed PostgreSQL requires TLS with its CA certificate. Put the PEM into
- * DATABASE_CA_CERT (literal "\n" sequences are accepted) and do not add sslmode to DATABASE_URL.
- */
-function databaseSsl() {
-  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, '\n').trim()
-  return ca ? { ca, rejectUnauthorized: true } : undefined
-}
+// Read at runtime (not NEXT_PUBLIC_*), see src/lib/db/runtimeEnv.ts.
+const serverURL = resolveServerUrl()
 
 export default buildConfig({
   serverURL,
@@ -52,15 +46,20 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL || '',
-      ssl: databaseSsl(),
+      // Do not add sslmode to DATABASE_URL: it would override these settings.
+      ssl: resolveDatabaseSsl(),
       max: Number(process.env.DATABASE_POOL_MAX || 5),
     },
     // Schema changes go through committed migrations only. Local experiments can set
     // PAYLOAD_DB_PUSH=true against a throwaway database.
     push: process.env.PAYLOAD_DB_PUSH === 'true',
     migrationDir: path.resolve(dirname, 'migrations'),
-    // Applied automatically when the production server starts.
-    prodMigrations: migrations,
   }),
+  // Committed migrations are applied when the production server starts, one instance at a time.
+  onInit: async (payload) => {
+    if (isProductionRuntime()) {
+      await migrateWithLock(payload, migrations)
+    }
+  },
   plugins: [],
 })

@@ -6,7 +6,7 @@ import { checkXLabelConnection } from '@/lib/xlabel/checkConnection'
 import { WEB_APP_TOKEN_CONTEXT } from '@/lib/xlabel/settings'
 
 const key = randomBytes(32)
-const env = { SETTINGS_ENCRYPTION_KEY: key.toString('base64') } as NodeJS.ProcessEnv
+const env = { SETTINGS_ENCRYPTION_KEY: key.toString('base64') } as unknown as NodeJS.ProcessEnv
 const publicKeyPem = generateKeyPairSync('rsa', { modulusLength: 2048 })
   .publicKey.export({ type: 'spki', format: 'pem' })
   .toString()
@@ -56,7 +56,9 @@ describe('checkXLabelConnection', () => {
     expect(empty.ok).toBe(false)
     expect(empty.items[0]!.message).toMatch(/Заполните адрес/)
 
-    const otherKey = { SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString('base64') } as NodeJS.ProcessEnv
+    const otherKey = {
+      SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+    } as unknown as NodeJS.ProcessEnv
     const rotated = await checkXLabelConnection(stored, { env: otherKey })
     expect(rotated.items[0]!.message).toMatch(/Ключ шифрования на сервере изменился/)
   })

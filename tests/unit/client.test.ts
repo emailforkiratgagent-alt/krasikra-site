@@ -191,9 +191,9 @@ describe('XLabelClient', () => {
 
   it('never puts tokens into error messages', async () => {
     const { fn } = fakeFetch([new Response('', { status: 500 }), new Response('', { status: 500 })])
-    const error = await client(fn)
+    const error = (await client(fn)
       .getPeople('user-secret-token')
-      .catch((e: XLabelError) => e)
+      .catch((e: unknown) => e)) as XLabelError
     expect(String(error.message + error.endpoint).includes('secret')).toBe(false)
     expect(error.endpoint).toBe('GET /people')
   })

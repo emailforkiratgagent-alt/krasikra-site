@@ -45,13 +45,17 @@ describe('secretBox', () => {
     parts[4] = data.toString('base64url')
     expect(() => decryptSecret(parts.join('.'), key, CONTEXT)).toThrow(SecretDecryptError)
     expect(() => decryptSecret('garbage', key, CONTEXT)).toThrow(SecretDecryptError)
+    // A truncated authentication tag must be rejected, not accepted as a shorter tag.
+    const short = stored.split('.')
+    short[3] = Buffer.from(short[3]!, 'base64url').subarray(0, 4).toString('base64url')
+    expect(() => decryptSecret(short.join('.'), key, CONTEXT)).toThrow(SecretDecryptError)
   })
 
   it('validates the key from the environment', () => {
-    expect(() => getEncryptionKey({})).toThrow(SecretKeyError)
+    expect(() => getEncryptionKey({} as NodeJS.ProcessEnv)).toThrow(SecretKeyError)
     expect(() => parseEncryptionKey('c2hvcnQ=')).toThrow(/32 bytes/)
     const raw = randomBytes(32).toString('base64')
-    expect(getEncryptionKey({ SETTINGS_ENCRYPTION_KEY: raw }).length).toBe(32)
+    expect(getEncryptionKey({ SETTINGS_ENCRYPTION_KEY: raw } as unknown as NodeJS.ProcessEnv).length).toBe(32)
   })
 
   it('masks secrets showing at most the last 4 characters', () => {

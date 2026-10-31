@@ -12,7 +12,9 @@ import {
   type StoredXLabelIntegration,
 } from '../lib/xlabel/settings'
 
-const URL_RE = /^https?:\/\/[^\s/]+(\/[^\s]*)?$/i
+// HTTPS only: the site token travels in a header. Plain HTTP is allowed for localhost (development).
+const URL_RE = /^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)(\/[^\s]*)?$/i
+const URL_MESSAGE = 'Введите адрес вида https://example.xlabel.ru (только https)'
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/
 
 function fail(path: string, message: string): never {
@@ -53,7 +55,7 @@ export const XLabelIntegration: GlobalConfig = {
       },
       validate: (value: string | null | undefined) => {
         if (!value || !value.trim()) return true
-        return URL_RE.test(value.trim()) || 'Введите адрес вида https://example.xlabel.ru'
+        return URL_RE.test(value.trim()) || URL_MESSAGE
       },
     },
     {
@@ -65,7 +67,7 @@ export const XLabelIntegration: GlobalConfig = {
         autoComplete: 'off',
         placeholder: 'Вставьте новый токен, чтобы заменить сохранённый',
         description:
-          'Токен из админки X.Label (поле webAppToken проекта). Хранится зашифрованным и после сохранения больше не показывается. Оставьте поле пустым, чтобы не менять токен.',
+          'Токен из админки X.Label (поле webAppToken проекта). Хранится зашифрованным и после сохранения больше не показывается. Оставьте поле пустым, чтобы не менять токен. Новые значения начинают действовать на сайте в течение минуты.',
       },
     },
     {
@@ -132,8 +134,7 @@ export const XLabelIntegration: GlobalConfig = {
         // partial update are left untouched.
         if ('apiBaseUrl' in data) {
           const rawUrl = typeof data.apiBaseUrl === 'string' ? data.apiBaseUrl.trim() : ''
-          if (rawUrl && !URL_RE.test(rawUrl))
-            fail('apiBaseUrl', 'Введите адрес вида https://example.xlabel.ru')
+          if (rawUrl && !URL_RE.test(rawUrl)) fail('apiBaseUrl', URL_MESSAGE)
           next.apiBaseUrl = rawUrl ? normalizeBaseUrl(rawUrl) : null
         }
 
