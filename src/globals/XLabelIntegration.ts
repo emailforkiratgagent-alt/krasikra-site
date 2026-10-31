@@ -3,8 +3,8 @@ import { ValidationError, type GlobalConfig } from 'payload'
 import { denyAll, isAdmin, isAdminUser } from '../access/roles'
 import { encryptSecret, getEncryptionKey, maskSecret, SecretKeyError } from '../lib/crypto/secretBox'
 import { checkXLabelConnection } from '../lib/xlabel/checkConnection'
-import { normalizeBaseUrl } from '../lib/xlabel/client'
 import { inspectPublicKey } from '../lib/xlabel/hashCode'
+import { parseApiBaseUrl } from '../lib/xlabel/baseUrl'
 import {
   invalidateXLabelConfigCache,
   WEB_APP_TOKEN_CONTEXT,
@@ -12,10 +12,17 @@ import {
   type StoredXLabelIntegration,
 } from '../lib/xlabel/settings'
 
-// HTTPS only: the site token travels in a header. Plain HTTP is allowed for localhost (development).
-const URL_RE = /^(https:\/\/[^\s/]+|http:\/\/(localhost|127\.0\.0\.1)(:\d+)?)(\/[^\s]*)?$/i
 const URL_MESSAGE = 'Введите адрес вида https://example.xlabel.ru (только https)'
 const TOKEN_RE = /^[\x21-\x7e]{8,512}$/
+
+function originOf(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null
+  try {
+    return new URL(value).origin.toLowerCase()
+  } catch {
+    return null
+  }
+}
 
 function fail(path: string, message: string): never {
   throw new ValidationError({ global: XLABEL_GLOBAL_SLUG, errors: [{ path, message }] })
@@ -55,7 +62,7 @@ export const XLabelIntegration: GlobalConfig = {
       },
       validate: (value: string | null | undefined) => {
         if (!value || !value.trim()) return true
-        return URL_RE.test(value.trim()) || URL_MESSAGE
+        return parseApiBaseUrl(value) ? true : URL_MESSAGE
       },
     },
     {
@@ -134,13 +141,25 @@ export const XLabelIntegration: GlobalConfig = {
         // partial update are left untouched.
         if ('apiBaseUrl' in data) {
           const rawUrl = typeof data.apiBaseUrl === 'string' ? data.apiBaseUrl.trim() : ''
-          if (rawUrl && !URL_RE.test(rawUrl)) fail('apiBaseUrl', URL_MESSAGE)
-          next.apiBaseUrl = rawUrl ? normalizeBaseUrl(rawUrl) : null
+          const parsed = rawUrl ? parseApiBaseUrl(rawUrl) : null
+          if (rawUrl && !parsed) fail('apiBaseUrl', URL_MESSAGE)
+          next.apiBaseUrl = parsed
         }
 
         // Site token: encrypt a new one, otherwise keep what is stored. Whatever the client
         // sent for the derived fields is ignored.
         const newToken = typeof data.webAppToken === 'string' ? data.webAppToken.trim() : ''
+
+        // The stored token must not be sent to a different server without re-entering it:
+        // otherwise anyone with admin access could read it by pointing the site to their host.
+        const oldOrigin = originOf(previous.apiBaseUrl)
+        const newOrigin = 'apiBaseUrl' in data ? originOf(next.apiBaseUrl) : oldOrigin
+        if (!newToken && previous.webAppTokenEncrypted && newOrigin && newOrigin !== oldOrigin) {
+          fail(
+            'webAppToken',
+            'Адрес сервера X.Label изменился — введите токен сайта заново (сохранённый токен на другой сервер не отправляется).',
+          )
+        }
         if (newToken) {
           if (!TOKEN_RE.test(newToken)) {
             fail('webAppToken', 'Токен должен быть одной строкой без пробелов, от 8 символов.')

@@ -1,4 +1,5 @@
 import { XLabelClient } from './client'
+import { XLabelError } from './errors'
 import { describeErrorForAdmin } from './describeError'
 import { generateDeviceId } from './hashCode'
 import { hashCodeFor, resolveXLabelConfig, type StoredXLabelIntegration } from './settings'
@@ -26,6 +27,7 @@ export async function checkXLabelConnection(
   try {
     config = resolveXLabelConfig(stored, options.env)
   } catch (error) {
+    logUnexpected(error)
     items.push({ name: 'Настройки', ok: false, message: describeErrorForAdmin(error) })
     return { ok: false, items }
   }
@@ -49,6 +51,7 @@ export async function checkXLabelConnection(
       }.`,
     })
   } catch (error) {
+    logUnexpected(error)
     items.push({
       name: 'Связь и токен сайта',
       ok: false,
@@ -80,4 +83,15 @@ export async function checkXLabelConnection(
   }
 
   return { ok: items.every((item) => item.ok), items, authProviders }
+}
+
+/**
+ * Unexpected (non-X.Label) failures are logged by name and message only: no request URL,
+ * headers or cause, which may contain the token or hash_code.
+ */
+function logUnexpected(error: unknown): void {
+  if (error instanceof XLabelError) return
+  const name = error instanceof Error ? error.name : typeof error
+  const message = error instanceof Error ? error.message.slice(0, 200) : ''
+  console.error(`[xlabel] connection check failed unexpectedly: ${name}: ${message}`)
 }

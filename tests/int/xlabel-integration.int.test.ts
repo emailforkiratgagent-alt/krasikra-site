@@ -100,10 +100,26 @@ describe('Интеграция X.Label (global)', () => {
   })
 
   it('keeps the stored token when the form is saved without a new one', async () => {
-    await update({ apiBaseUrl: 'https://y.example.ru', webAppToken: '', publicKeyPem: PEM })
+    await update({ apiBaseUrl: 'https://X.example.ru/', webAppToken: '', publicKeyPem: PEM })
     const resolved = await loadXLabelConfig(payload, { fresh: true })
     expect(resolved.appToken).toBe(TOKEN)
+    expect(resolved.baseUrl).toBe('https://x.example.ru')
+  })
+
+  it('asks for the token again when the server address changes', async () => {
+    // Otherwise an admin session could send the stored token to any server.
+    await expect(update({ apiBaseUrl: 'https://y.example.ru', webAppToken: '' })).rejects.toMatchObject({
+      data: { errors: [{ path: 'webAppToken' }] },
+    })
+    await expect(update({ apiBaseUrl: 'https://x.example.ru:8443' })).rejects.toMatchObject({
+      data: { errors: [{ path: 'webAppToken' }] },
+    })
+    expect((await loadXLabelConfig(payload, { fresh: true })).baseUrl).toBe('https://x.example.ru')
+
+    await update({ apiBaseUrl: 'https://y.example.ru', webAppToken: TOKEN, publicKeyPem: PEM })
+    const resolved = await loadXLabelConfig(payload, { fresh: true })
     expect(resolved.baseUrl).toBe('https://y.example.ru')
+    expect(resolved.appToken).toBe(TOKEN)
   })
 
   it('ignores attempts to write the encrypted value or the hint directly', async () => {
@@ -142,6 +158,11 @@ describe('Интеграция X.Label (global)', () => {
     await expect(update({ apiBaseUrl: 'http://x.example.ru' })).rejects.toMatchObject({
       data: { errors: [{ path: 'apiBaseUrl' }] },
     })
+    for (const bad of ['https://y.example.ru#', 'https://y.example.ru?a=1', 'https://good.ru@evil.ru']) {
+      await expect(update({ apiBaseUrl: bad })).rejects.toMatchObject({
+        data: { errors: [{ path: 'apiBaseUrl' }] },
+      })
+    }
     await expect(update({ webAppToken: 'has spaces inside it' })).rejects.toMatchObject({
       data: { errors: [{ path: 'webAppToken' }] },
     })

@@ -17,6 +17,24 @@ export DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/$SMOKE_DB"
 export DATABASE_SSL=disable
 export SERVER_URL=$BASE
 
+# Next.js renames its process to "next-server (vX)", so servers are tracked by PID, not by name.
+PIDS=()
+
+kill_servers() {
+  local signal="$1" pid
+  for pid in "${PIDS[@]}"; do
+    kill "-$signal" "$pid" 2>/dev/null || true
+  done
+}
+
+any_alive() {
+  local pid
+  for pid in "${PIDS[@]}"; do
+    kill -0 "$pid" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 on_exit() {
   local rc=$?
   if [ "$rc" -ne 0 ]; then
@@ -26,7 +44,7 @@ on_exit() {
       tail -n 40 "$f"
     done
   fi
-  pkill -f "node server.js" || true
+  kill_servers KILL
   exit "$rc"
 }
 trap on_exit EXIT
@@ -36,8 +54,11 @@ start() {
   local name="$1" port="$2"
   shift 2
   (cd .next/standalone && exec env NODE_ENV=production PORT="$port" HOSTNAME=127.0.0.1 "$@" node server.js \
-    </dev/null >"/tmp/server-$name.log" 2>&1 &)
+    </dev/null >"/tmp/server-$name.log" 2>&1) &
+  local pid=$!
+  PIDS+=("$pid")
   for _ in $(seq 1 60); do
+    kill -0 "$pid" 2>/dev/null || { echo "Server $name exited"; return 1; }
     "${CURL[@]}" -fo /dev/null "http://127.0.0.1:$port/healthz" 2>/dev/null && return 0
     sleep 1
   done
@@ -46,26 +67,27 @@ start() {
 }
 
 port_busy() {
-  # Any HTTP answer (even 503 during graceful shutdown) means the old server still holds the port.
+  # Any HTTP answer (even 503 during graceful shutdown) means a server still holds the port.
   "${CURL[@]}" --max-time 2 -o /dev/null "http://127.0.0.1:$1/" 2>/dev/null
 }
 
 stop() {
-  pkill -f "node server.js" || true
-  # Next.js shuts down gracefully: wait until the processes have exited and the ports are free.
+  kill_servers TERM
+  # Next.js shuts down gracefully: wait until the processes have exited.
   for _ in $(seq 1 30); do
-    if ! pgrep -f "node server.js" >/dev/null && ! port_busy 8080 && ! port_busy 8081; then
-      return 0
-    fi
+    any_alive || break
     sleep 1
   done
-  pkill -9 -f "node server.js" || true
-  for _ in $(seq 1 10); do
-    pgrep -f "node server.js" >/dev/null || return 0
+  if any_alive; then
+    echo "Servers did not stop on SIGTERM, killing"
+    kill_servers KILL
     sleep 1
-  done
-  echo "Old server processes did not exit"
-  return 1
+  fi
+  PIDS=()
+  if port_busy 8080 || port_busy 8081; then
+    echo "A port is still busy after stopping the servers"
+    return 1
+  fi
 }
 
 expect_code() {
@@ -104,7 +126,6 @@ stop
 
 # 3. Production mode: NOINDEX=false removes the header.
 start indexed 8080 NOINDEX=false
-[ "$(pgrep -fc "node server.js")" -ge 1 ] || { echo "indexed server is not running"; exit 1; }
 "${CURL[@]}" -fI "$BASE/" | tee /tmp/home2.txt
 if grep -qi '^x-robots-tag' /tmp/home2.txt; then
   echo "X-Robots-Tag must be absent with NOINDEX=false"

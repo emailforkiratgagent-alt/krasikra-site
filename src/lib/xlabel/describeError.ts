@@ -6,7 +6,7 @@ import { XLabelError } from './errors'
  */
 export function describeErrorForAdmin(error: unknown, baseUrl?: string): string {
   if (!(error instanceof XLabelError)) {
-    return 'Непредвиденная ошибка на сервере сайта. Подробности — в журнале контейнера.'
+    return 'Непредвиденная ошибка на сервере сайта. Подробности — в журнале контейнера; сообщите разработчику.'
   }
   const where = baseUrl ? ` (${baseUrl})` : ''
   switch (error.kind) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { parseApiBaseUrl } from '@/lib/xlabel/baseUrl'
 import { normalizeBaseUrl, XLabelClient } from '@/lib/xlabel/client'
 import { isAccessTokenExpired, isLoginDead, isLoginPending, XLabelError } from '@/lib/xlabel/errors'
 
@@ -39,6 +40,33 @@ describe('normalizeBaseUrl', () => {
     expect(normalizeBaseUrl('https://x.ru/api/v1.30/')).toBe('https://x.ru')
     expect(normalizeBaseUrl('https://x.ru/api')).toBe('https://x.ru')
     expect(normalizeBaseUrl('https://x.ru/sub/path')).toBe('https://x.ru/sub/path')
+  })
+})
+
+describe('parseApiBaseUrl', () => {
+  const prod = { NODE_ENV: 'production' }
+  it('accepts https addresses and strips the API suffix', () => {
+    expect(parseApiBaseUrl(' https://x.example.ru/api/v1.30/ ', prod)).toBe('https://x.example.ru')
+    expect(parseApiBaseUrl('https://x.example.ru:8443/base/', prod)).toBe('https://x.example.ru:8443/base')
+  })
+  it('rejects plain http, credentials, query and fragment', () => {
+    for (const bad of [
+      'http://x.example.ru',
+      'https://good.ru@evil.ru',
+      'https://u:p@x.ru',
+      'https://x.ru?a=1',
+      'https://x.ru#',
+      'https://x.ru/#/frag',
+      'ftp://x.ru',
+      'x.ru',
+      'https://x .ru',
+    ]) {
+      expect(parseApiBaseUrl(bad, prod), bad).toBeNull()
+    }
+  })
+  it('allows http://localhost only outside production', () => {
+    expect(parseApiBaseUrl('http://localhost:3001', { NODE_ENV: 'development' })).toBe('http://localhost:3001')
+    expect(parseApiBaseUrl('http://localhost:3001', prod)).toBeNull()
   })
 })
 
@@ -172,6 +200,21 @@ describe('XLabelClient', () => {
     await expect(client(shape.fn).getSettings()).rejects.toMatchObject({ kind: 'parse' })
     const notFound = fakeFetch([new Response('<html>404</html>', { status: 404 })])
     await expect(client(notFound.fn).getSettings()).rejects.toMatchObject({ kind: 'http', status: 404 })
+  })
+
+  it('treats a connection broken while reading the body as transient', async () => {
+    const broken = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError('terminated'))
+          },
+        }),
+        { status: 200 },
+      )
+    const { fn, calls } = fakeFetch([broken(), broken()])
+    await expect(client(fn).getSettings()).rejects.toMatchObject({ kind: 'network' })
+    expect(calls).toHaveLength(2)
   })
 
   it('times out', async () => {

@@ -186,7 +186,19 @@ export class XLabelClient {
       throw new XLabelError('network', 'Could not reach X.Label', 0, endpoint, { cause: error })
     }
 
-    const text = await res.text().catch(() => '')
+    let text: string
+    try {
+      text = await res.text()
+    } catch (error) {
+      // The connection broke or timed out while reading the body: transient, not a bad answer.
+      const name = (error as { name?: string } | null)?.name
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new XLabelError('timeout', 'X.Label did not respond in time', res.status, endpoint, {
+          cause: error,
+        })
+      }
+      throw new XLabelError('network', 'Connection to X.Label broke', res.status, endpoint, { cause: error })
+    }
     let data: unknown = undefined
     if (text) {
       try {

@@ -54,5 +54,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD wget -qO- "http://127.0.0.1:${PORT}/healthz" >/dev/null || exit 1
 
-# Database migrations are applied by Payload on first start (prodMigrations).
+# Database migrations are applied on the first request to /admin or /api (Payload onInit →
+# src/lib/db/migrateWithLock.ts, under a PostgreSQL advisory lock). /healthz does not wait for them.
 CMD ["node", "server.js"]
