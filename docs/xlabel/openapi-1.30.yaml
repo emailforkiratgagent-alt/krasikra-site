@@ -1,0 +1,5208 @@
+openapi: 3.0.3
+info:
+  title: XLabel Mobile API
+  version: '1.30'
+  description: |-
+    API мобильных приложений проектов XLabel. Актуальная версия — **1.30** (`latest_api_version` в `config/services.yaml`).
+
+    Подробности (версионирование, авторизация, формат ответов) — в `docs/api/README.md`.
+
+    Документ составлен по исходному коду контроллеров `src/Controller/API/v1` и нормализаторам `src/Serializer/Normalizer`.
+servers:
+  - url: https://{host}/api/v{version}
+    variables:
+      host:
+        default: example.com
+        description: Хост проекта
+      version:
+        default: '1.30'
+        description: Версия API (`major.minor`). Если версию не указать в маршруте, подставляется последняя.
+tags:
+  - name: Авторизация
+  - name: Сервисные
+  - name: Профиль
+  - name: Адреса и оплата
+  - name: Контент
+  - name: Подарки (купоны)
+  - name: Каталог
+  - name: Заказы
+  - name: Адреса и геокодинг
+  - name: Опросы и оценка чеков
+  - name: SMM
+paths:
+  /token/phone:
+    post:
+      tags:
+        - Авторизация
+      summary: Вход по телефону и паролю
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                password:
+                  type: string
+                  format: password
+              required:
+                - phone
+                - password
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                password:
+                  type: string
+                  format: password
+              required:
+                - phone
+                - password
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '401':
+          description: Неверный логин/пароль, пользователь заблокирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/card:
+    post:
+      tags:
+        - Авторизация
+      summary: Вход по номеру карты и паролю
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                card_code:
+                  type: integer
+                password:
+                  type: string
+                  format: password
+              required:
+                - card_code
+                - password
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_code:
+                  type: integer
+                password:
+                  type: string
+                  format: password
+              required:
+                - card_code
+                - password
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '401':
+          description: Неверный логин/пароль, пользователь заблокирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/firebase:
+    post:
+      tags:
+        - Авторизация
+      summary: Вход по Firebase ID-токену
+      description: Телефон берётся из аккаунта Firebase; новый пользователь регистрируется автоматически.
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Нет `id_token`, не настроен ключ Firebase, ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен недействителен / пользователь заблокирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Устройство заблокировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/google:
+    post:
+      tags:
+        - Авторизация
+      summary: Вход по Google ID-токену
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Нет `id_token` / не настроены секреты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не авторизован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/telegram/start:
+    post:
+      tags:
+        - Авторизация
+      summary: Начать вход через Telegram
+      description: '**Доступно с версии API 1.7** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен или ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/telegram:
+    post:
+      tags:
+        - Авторизация
+      summary: Завершить вход через Telegram
+      description: '**Доступно с версии API 1.7** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+                  description: Токен из `/token/telegram/start`
+              required:
+                - id_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+                  description: Токен из `/token/telegram/start`
+              required:
+                - id_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Нет `id_token`/бот не настроен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не найден, просрочен или телефон не подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/max/start:
+    post:
+      tags:
+        - Авторизация
+      summary: Начать вход через Max
+      description: '**Доступно с версии API 1.7** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен или ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/max:
+    post:
+      tags:
+        - Авторизация
+      summary: Завершить вход через Max
+      description: '**Доступно с версии API 1.7** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Нет `id_token`/бот не настроен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не найден, просрочен или телефон не подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/whatsapp/start:
+    post:
+      tags:
+        - Авторизация
+      summary: Начать вход через WhatsApp
+      description: '**Доступно с версии API 1.30** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен или ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/whatsapp:
+    post:
+      tags:
+        - Авторизация
+      summary: Завершить вход через WhatsApp
+      description: '**Доступно с версии API 1.30** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token:
+                  type: string
+              required:
+                - id_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Нет `id_token`/бот не настроен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не найден, просрочен или телефон не подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/otp/request:
+    get:
+      tags:
+        - Авторизация
+      summary: URL для запроса одноразового пароля
+      description: Возвращает ссылку на страницу запроса OTP (метод принимает любой HTTP-метод).
+      security:
+        - appToken: []
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - sms_ru_sms
+              - sms_ru_call
+          description: Тип OTP
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/otp/check:
+    post:
+      tags:
+        - Авторизация
+      summary: Вход по одноразовому паролю (SMS.ru)
+      description: '**Доступно с версии API 1.23** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - sms_ru_sms
+                    - sms_ru_call
+                token:
+                  type: string
+                password:
+                  type: string
+                  description: Код из SMS (для типа SMS)
+              required:
+                - type
+                - token
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - sms_ru_sms
+                    - sms_ru_call
+                token:
+                  type: string
+                password:
+                  type: string
+                  description: Код из SMS (для типа SMS)
+              required:
+                - type
+                - token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '400':
+          description: Неверный `type`, нет `token`/`password`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Токен не найден/просрочен, неверный код, номер ещё не подтверждён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /token/refresh:
+    post:
+      tags:
+        - Авторизация
+      summary: Обновить access_token
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+              required:
+                - refresh_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+              required:
+                - refresh_token
+      responses:
+        '200':
+          description: Пара токенов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/TokenPair'
+                required:
+                  - response
+        '401':
+          description: Токен не найден, пользователь заблокирован/удалён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /versions:
+    get:
+      tags:
+        - Сервисные
+      summary: Версии разделов данных
+      description: Клиент вызывает при старте/возврате в приложение, сравнивает даты и перезагружает изменившиеся разделы. Для авторизованного пользователя также регистрирует вход и push-токен (если переданы `push_token`, `platform`, `version`).
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - android
+              - ios
+          description: Платформа приложения
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: ^\d+\.\d+\.\d+$
+          description: Версия приложения X.Y.Z
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+        - name: push_token
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tester
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Versions'
+                required:
+                  - response
+        '400':
+          description: Ошибка проверки устройства (v1.9+)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Неверный токен / устройство заблокировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /settings:
+    get:
+      tags:
+        - Сервисные
+      summary: Настройки приложения
+      description: |-
+        Набор полей зависит от версии API (см. описание полей в схеме).
+
+        **Доступно с версии API 1.1** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: platform
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - android
+              - ios
+          description: Платформа приложения
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Settings'
+                required:
+                  - response
+  /push_token:
+    post:
+      tags:
+        - Сервисные
+      summary: Зарегистрировать push-токен
+      description: 'Алиас: `POST /people/push_token`. Если передан `Authorization`, токен привязывается к пользователю.'
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                  description: Версия приложения
+                tester:
+                  type: boolean
+              required:
+                - push_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                  description: Версия приложения
+                tester:
+                  type: boolean
+              required:
+                - push_token
+      responses:
+        '200':
+          description: Принято, тело пустое
+        '400':
+          description: Нет `push_token`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/push_token:
+    post:
+      tags:
+        - Сервисные
+      summary: Зарегистрировать push-токен (алиас)
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+              required:
+                - push_token
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_token:
+                  type: string
+                platform:
+                  type: string
+                version:
+                  type: string
+                tester:
+                  type: boolean
+              required:
+                - push_token
+      responses:
+        '200':
+          description: Принято, тело пустое
+        '400':
+          description: Нет `push_token`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Сервисные
+      summary: Удалить push-токен
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: push_token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Принято, тело пустое
+        '400':
+          description: Нет `push_token`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /feedback/new:
+    post:
+      tags:
+        - Сервисные
+      summary: Обращение в поддержку
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                contact:
+                  type: string
+                content:
+                  type: string
+              required:
+                - contact
+                - content
+          application/json:
+            schema:
+              type: object
+              properties:
+                contact:
+                  type: string
+                content:
+                  type: string
+              required:
+                - contact
+                - content
+      description: 'Особый случай: Нет `contact`/`content`: ошибка в `error` с кодом 200 — сервер отвечает `200` с телом `{"error": ...}`.'
+      responses:
+        '200':
+          description: Текст-подтверждение
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+  /feedback/password_reset_issue:
+    post:
+      tags:
+        - Сервисные
+      summary: 'Обращение: не удаётся восстановить пароль (карта + телефон)'
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                card_code:
+                  type: integer
+                phone_number:
+                  type: string
+              required:
+                - card_code
+                - phone_number
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_code:
+                  type: integer
+                phone_number:
+                  type: string
+              required:
+                - card_code
+                - phone_number
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /feedback/password_reset_by_phone_issue:
+    post:
+      tags:
+        - Сервисные
+      summary: 'Обращение: не удаётся восстановить пароль (телефон)'
+      security:
+        - appToken: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+              required:
+                - phone
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+              required:
+                - phone
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '400':
+          description: Не указан телефон
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people:
+    get:
+      tags:
+        - Профиль
+      summary: Профиль пользователя
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Профиль
+      summary: Изменить профиль
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: Пустая строка — сбросить
+                pos_print_check:
+                  type: string
+                  enum:
+                    - always
+                    - never
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  description: Пустая строка — сбросить
+                pos_print_check:
+                  type: string
+                  enum:
+                    - always
+                    - never
+      description: 'Особый случай: Неверное значение `pos_print_check`  — сервер отвечает `200` с телом `{"error": ...}`.'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/photo:
+    post:
+      tags:
+        - Профиль
+      summary: Фото профиля (зарезервировано)
+      description: Метод пока только возвращает профиль, загрузка файла не реализована.
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/qr:
+    get:
+      tags:
+        - Профиль
+      summary: QR-токен для кассы
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      short_token:
+                        type: string
+                        description: 9 цифр
+                      expires_in:
+                        type: integer
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/phone/verify:
+    post:
+      tags:
+        - Профиль
+      summary: Подтвердить и привязать телефон
+      description: |-
+        Только если у пользователя ещё нет телефона.
+
+        **Доступно с версии API 1.9** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                token_type:
+                  type: string
+                  enum:
+                    - firebase
+                    - telegram
+                    - whatsapp
+                    - max
+                  description: '`whatsapp`, `max` — с v1.30'
+              required:
+                - token
+                - token_type
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                token_type:
+                  type: string
+                  enum:
+                    - firebase
+                    - telegram
+                    - whatsapp
+                    - max
+                  description: '`whatsapp`, `max` — с v1.30'
+              required:
+                - token
+                - token_type
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '400':
+          description: Телефон уже указан / токен неверен или просрочен / номер занят / неверный формат (+79XXXXXXXXX)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/phone/verify/telegram/start:
+    post:
+      tags:
+        - Профиль
+      summary: Начать подтверждение телефона через Telegram
+      description: '**Доступно с версии API 1.9** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен / ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/phone/verify/whatsapp/start:
+    post:
+      tags:
+        - Профиль
+      summary: Начать подтверждение телефона через Whatsapp
+      description: '**Доступно с версии API 1.9** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен / ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/phone/verify/max/start:
+    post:
+      tags:
+        - Профиль
+      summary: Начать подтверждение телефона через Max
+      description: '**Доступно с версии API 1.9** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/MessengerStart'
+                required:
+                  - response
+        '400':
+          description: Бот не настроен / ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/delete:
+    post:
+      tags:
+        - Профиль
+      summary: Удалить аккаунт
+      description: '**Доступно с версии API 1.29** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      responses:
+        '200':
+          description: '`"OK"`'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '400':
+          description: Ошибка проверки устройства
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/accounts:
+    get:
+      tags:
+        - Профиль
+      summary: Счета пользователя
+      description: С v1.2 в ответ включаются бонусы с ограниченным сроком и транзакции.
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Account'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/accounts/{id}:
+    get:
+      tags:
+        - Профиль
+      summary: Счёт по id
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Account'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Счёт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/accounts/{id}/transactions:
+    get:
+      tags:
+        - Профиль
+      summary: Транзакции по счёту
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: time_offset
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Вернуть транзакции раньше указанного времени (постраничность), формат `Y-m-d\TH:i:sT`
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                required:
+                  - response
+        '400':
+          description: Неверный формат `time_offset`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Счёт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/accounts/transactions:
+    get:
+      tags:
+        - Профиль
+      summary: Транзакции по всем счетам (устарел)
+      description: '**Удалено в версии 1.1** (в более поздних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/addresses:
+    get:
+      tags:
+        - Адреса и оплата
+      summary: Адреса доставки
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PeopleAddress'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/addresses/new:
+    post:
+      tags:
+        - Адреса и оплата
+      summary: Добавить адрес
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                street_guid:
+                  type: string
+                  format: uuid
+                  description: ФИАС-идентификатор улицы (из `/streets/search`)
+                house:
+                  type: string
+                flat:
+                  type: string
+                floor:
+                  type: string
+                entrance:
+                  type: string
+                lat:
+                  type: number
+                lng:
+                  type: number
+                comment:
+                  type: string
+              required:
+                - street_guid
+                - house
+      description: 'Особый случай: Улица не найдена / недопустима  — сервер отвечает `200` с телом `{"error": ...}`.'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/PeopleAddress'
+                required:
+                  - response
+        '400':
+          description: Ошибки валидации формы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/addresses/{id}/delete:
+    post:
+      tags:
+        - Адреса и оплата
+      summary: Удалить адрес
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: boolean
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Адрес не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/payment_tools:
+    get:
+      tags:
+        - Адреса и оплата
+      summary: Сохранённые способы оплаты (карты)
+      description: '**Доступно с версии API 1.24** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentTool'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /people/payment_tools/{id}/delete:
+    post:
+      tags:
+        - Адреса и оплата
+      summary: Удалить сохранённую карту
+      description: '**Доступно с версии API 1.24** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: boolean
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /adverts:
+    get:
+      tags:
+        - Контент
+      summary: Акции
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Advert'
+                required:
+                  - response
+  /adverts/{id}:
+    get:
+      tags:
+        - Контент
+      summary: Акция по id
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Advert'
+                required:
+                  - response
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /adverts/{id}/view:
+    post:
+      tags:
+        - Контент
+      summary: Отметить акцию просмотренной
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Advert'
+                required:
+                  - response
+        '400':
+          description: Объект уже просмотрен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /advert_counter:
+    get:
+      tags:
+        - Контент
+      summary: Счётчики акций (прогресс по этапам)
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdvertCounter'
+                required:
+                  - response
+  /banners:
+    get:
+      tags:
+        - Контент
+      summary: Баннеры
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Banner'
+                required:
+                  - response
+  /banners/{id}:
+    get:
+      tags:
+        - Контент
+      summary: Баннер по id
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Banner'
+                required:
+                  - response
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /news:
+    get:
+      tags:
+        - Контент
+      summary: Новости
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/News'
+                required:
+                  - response
+  /news/{id}:
+    get:
+      tags:
+        - Контент
+      summary: Новость по id
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/News'
+                required:
+                  - response
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /news/{id}/view:
+    post:
+      tags:
+        - Контент
+      summary: Отметить новость просмотренной
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/News'
+                required:
+                  - response
+        '400':
+          description: Объект уже просмотрен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /stores:
+    get:
+      tags:
+        - Контент
+      summary: Торговые точки
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Store'
+                required:
+                  - response
+  /stores/{id}:
+    get:
+      tags:
+        - Контент
+      summary: Торговая точка по id
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Store'
+                required:
+                  - response
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /stores/nearest:
+    get:
+      tags:
+        - Контент
+      summary: Ближайшая точка к адресу
+      security:
+        - appToken: []
+      parameters:
+        - name: shipment_address_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: id адреса
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Store'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Адрес/точка не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /coupons:
+    get:
+      tags:
+        - Подарки (купоны)
+      summary: Подарки пользователя
+      description: Обычные и групповые купоны.
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Coupon'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /coupons/{id}:
+    get:
+      tags:
+        - Подарки (купоны)
+      summary: Подарок по id
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: id (UUID или число для группы)
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Coupon'
+                required:
+                  - response
+        '400':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /coupons/{id}/view:
+    post:
+      tags:
+        - Подарки (купоны)
+      summary: Отметить подарок просмотренным
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Coupon'
+                required:
+                  - response
+        '400':
+          description: Объект уже просмотрен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /coupons/{id}/activate:
+    post:
+      tags:
+        - Подарки (купоны)
+      summary: Активировать подарок
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Coupon'
+                required:
+                  - response
+        '400':
+          description: Подарок уже активирован / недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /coupons/assign:
+    post:
+      tags:
+        - Подарки (купоны)
+      summary: Получить подарок по промокоду или id
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: hash_code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Зашифрованный идентификатор устройства (RSA, base64). Обязателен для методов авторизации и подтверждения телефона начиная с v1.9; также передаётся в теле формы.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: Промокод или идентификатор подарка
+              required:
+                - code
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                  description: Промокод или идентификатор подарка
+              required:
+                - code
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Coupon'
+                required:
+                  - response
+        '400':
+          description: Нет `code`, подарки по промокоду выданы/уже получены, ограничение группы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /products:
+    get:
+      tags:
+        - Каталог
+      summary: Товары и группы
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: store
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: id точки (обязателен, если у проекта нет общего каталога)
+        - name: group
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Фильтр по группе
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: object
+                    properties:
+                      groups:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ProductGroup'
+                      products:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Product'
+                required:
+                  - response
+        '404':
+          description: Точка/группа не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /product_mods:
+    get:
+      tags:
+        - Каталог
+      summary: Модификаторы товаров
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: store
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: 'С v1.26: id точки для цен'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductMod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Точка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /product_mods/{id}:
+    get:
+      tags:
+        - Каталог
+      summary: Модификатор по id
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+        - name: store
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/ProductMod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /payment_methods:
+    get:
+      tags:
+        - Каталог
+      summary: Способы оплаты
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: store
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Если указан — методы этой точки, иначе общие
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentMethod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Точка не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /payment_methods/{id}:
+    get:
+      tags:
+        - Каталог
+      summary: Способ оплаты по id
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/PaymentMethod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /shipment_methods:
+    get:
+      tags:
+        - Каталог
+      summary: Способы доставки
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ShipmentMethod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /shipment_methods/{id}:
+    get:
+      tags:
+        - Каталог
+      summary: Способ доставки по id
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/ShipmentMethod'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /shipment_methods/{id}/calc:
+    get:
+      tags:
+        - Каталог
+      summary: Расчёт доставки для адреса
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+        - name: address_id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: id адреса пользователя (с координатами)
+        - name: store_id
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: id точки
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/ShipmentCalc'
+                required:
+                  - response
+        '400':
+          description: Нет `address_id` / у адреса нет координат
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Метод/адрес/точка не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Нет ключа внешнего сервиса доставки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /shipment_time_windows:
+    get:
+      tags:
+        - Каталог
+      summary: Доступные окна доставки по датам
+      description: |-
+        Пустой массив, если у проекта выбран другой вид даты/времени доставки.
+
+        **Доступно с версии API 1.20** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          since:
+                            type: string
+                            example: '10:00'
+                          until:
+                            type: string
+                            example: '12:00'
+                    description: Ключ — дата `YYYY-MM-DD`
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /orders:
+    get:
+      tags:
+        - Заказы
+      summary: Заказы пользователя
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Заказы
+      summary: Создать заказ
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Order'
+                required:
+                  - response
+        '400':
+          description: Ошибки валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /orders/{id}:
+    get:
+      tags:
+        - Заказы
+      summary: Заказ по id
+      description: '**Доступно с версии API 1.20** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Order'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - Заказы
+      summary: Изменить заказ
+      description: |-
+        Нельзя изменить оплаченный, отменённый или уже принятый заказ.
+
+        **Доступно с версии API 1.20** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Order'
+                required:
+                  - response
+        '400':
+          description: Заказ нельзя изменить / ошибки валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /orders/{id}/payments:
+    post:
+      tags:
+        - Заказы
+      summary: Зафиксировать платёж по заказу (после оплаты в SDK)
+      description: |-
+        Сервер проверяет статус платежа в Tinkoff/Сбербанк и обновляет заказ.
+
+        **Доступно с версии API 1.20** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                payment_id:
+                  type: string
+                  description: Идентификатор платежа в платёжной системе
+                verify:
+                  type: boolean
+                  description: Верификационный платёж (будет возвращён)
+              required:
+                - payment_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                payment_id:
+                  type: string
+                  description: Идентификатор платежа в платёжной системе
+                verify:
+                  type: boolean
+                  description: Верификационный платёж (будет возвращён)
+              required:
+                - payment_id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/Order'
+                required:
+                  - response
+        '400':
+          description: Метод оплаты не поддерживает платежи / ошибка платёжной системы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: Не удалось получить статус платежа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /orders/{id}/payments/init:
+    post:
+      tags:
+        - Заказы
+      summary: Создать платёж на сервере (Сбербанк)
+      description: |-
+        Для Tinkoff возвращает `400` — используйте Tinkoff SDK.
+
+        **Доступно с версии API 1.30** (в более ранних версиях — `404`).
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Идентификатор
+      requestBody:
+        required: false
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                platform:
+                  type: string
+                  enum:
+                    - android
+                    - ios
+                  description: Для App2App
+                verify:
+                  type: boolean
+          application/json:
+            schema:
+              type: object
+              properties:
+                platform:
+                  type: string
+                  enum:
+                    - android
+                    - ios
+                  description: Для App2App
+                verify:
+                  type: boolean
+      responses:
+        '200':
+          description: Ответ платёжного шлюза (поля шлюза + `return_url`, `fail_url`, `order_number`)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orderId:
+                    type: string
+                  formUrl:
+                    type: string
+                  externalParams:
+                    type: object
+                    additionalProperties: true
+                  return_url:
+                    type: string
+                  fail_url:
+                    type: string
+                  order_number:
+                    type: string
+        '400':
+          description: Заказ не ожидает оплаты / метод не поддерживает серверное создание
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /streets/search:
+    get:
+      tags:
+        - Адреса и геокодинг
+      summary: Поиск улицы
+      description: |-
+        Принимает любой HTTP-метод. Источник — DaData или справочник ФИАС (зависит от проекта).
+
+        Особый случай: Слишком короткий `q`  — сервер отвечает `200` с телом `{"error": ...}`.
+      security:
+        - appToken: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Строка поиска
+        - name: city_guid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Для DaData — `{items, more}`; для ФИАС — массив `{id, label}`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            label:
+                              type: string
+                            value:
+                              type: string
+                      more:
+                        type: boolean
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /geocode:
+    get:
+      tags:
+        - Адреса и геокодинг
+      summary: Адрес → координаты
+      description: Принимает любой HTTP-метод. Провайдер (DaData/Google/Yandex) задаётся в проекте.
+      security:
+        - appToken: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Адрес
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/GeoPoint'
+                required:
+                  - response
+        '400':
+          description: Нет `q` или ключа геокодера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Не удалось определить координаты
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /geolocate:
+    get:
+      tags:
+        - Адреса и геокодинг
+      summary: Координаты → адрес (DaData)
+      description: Принимает любой HTTP-метод.
+      security:
+        - appToken: []
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        label:
+                          type: string
+                        city:
+                          type: string
+                        street:
+                          type: string
+                        house:
+                          type: string
+                        lat:
+                          type: number
+                        lng:
+                          type: number
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/polls:
+    get:
+      tags:
+        - Опросы и оценка чеков
+      summary: Опросы
+      description: '**Доступно с версии API 1.5** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Poll'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/polls/join:
+    post:
+      tags:
+        - Опросы и оценка чеков
+      summary: Присоединиться к опросу
+      description: '**Доступно с версии API 1.5** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Poll'
+                required:
+                  - response
+        '400':
+          description: Нет `poll_id` / опрос не требует подтверждения участия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Опрос не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/polls/view:
+    post:
+      tags:
+        - Опросы и оценка чеков
+      summary: Отметить опрос просмотренным
+      description: '**Доступно с версии API 1.5** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Poll'
+                required:
+                  - response
+        '400':
+          description: Нет `poll_id` / опрос не требует подтверждения участия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Опрос не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/polls/leave:
+    post:
+      tags:
+        - Опросы и оценка чеков
+      summary: Покинуть опрос
+      description: '**Доступно с версии API 1.5** (в более ранних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                poll_id:
+                  type: integer
+              required:
+                - poll_id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Poll'
+                required:
+                  - response
+        '400':
+          description: Нет `poll_id` / опрос не требует подтверждения участия
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Опрос не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/questions:
+    get:
+      tags:
+        - Опросы и оценка чеков
+      summary: Вопросы оценки чека (устарел)
+      description: '**Удалено в версии 1.5** (в более поздних версиях — `404`).'
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PollQuestion'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /receipt_rate/rate:
+    post:
+      tags:
+        - Опросы и оценка чеков
+      summary: Оценить чек
+      description: |-
+        Ответы на обязательные вопросы опроса обязательны.
+
+        Особый случай: Чек уже оценён / не хватает ответов  — сервер отвечает `200` с телом `{"error": ...}`.
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                receipt_id:
+                  type: string
+                  description: UUID чека
+                poll_id:
+                  type: integer
+                rates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      question_id:
+                        type: integer
+                      value:
+                        description: Ответ (тип зависит от виджета вопроса)
+                    required:
+                      - question_id
+                      - value
+              required:
+                - receipt_id
+                - rates
+      responses:
+        '200':
+          description: Благодарность
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '400':
+          description: Некорректные `rates`/`poll_id`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Чек/опрос не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/account_levels:
+    get:
+      tags:
+        - SMM
+      summary: Уровни соцбонуса
+      security:
+        - appToken: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SocialAccountLevel'
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/media/system:
+    get:
+      tags:
+        - SMM
+      summary: Системные медиа для постов
+      security:
+        - appToken: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        url:
+                          type: string
+                required:
+                  - response
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/instagram/redirect:
+    get:
+      tags:
+        - SMM
+      summary: Редирект на авторизацию Instagram
+      description: Принимает любой HTTP-метод. Возвращает `302` на Instagram OAuth либо HTML-заглушку, если Instagram не настроен.
+      security:
+        - appToken: []
+      responses:
+        '200':
+          description: HTML-заглушка
+          content:
+            text/html:
+              schema:
+                type: string
+        '401':
+          description: Не указан или неверен `X-APP-TOKEN`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/instagram/authorize:
+    post:
+      tags:
+        - SMM
+      summary: Привязать Instagram по коду OAuth
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+              required:
+                - code
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+              required:
+                - code
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '400':
+          description: Нет `code`, SMM отключён/заблокирован для пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '504':
+          description: Ответ Instagram некорректен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/instagram/deauthorize:
+    post:
+      tags:
+        - SMM
+      summary: Отвязать Instagram
+      security:
+        - appToken: []
+          bearerAuth: []
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    $ref: '#/components/schemas/People'
+                required:
+                  - response
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/instagram/media:
+    get:
+      tags:
+        - SMM
+      summary: Список медиа пользователя для чека
+      security:
+        - appToken: []
+          bearerAuth: []
+      parameters:
+        - name: receipt_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID чека
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        url:
+                          type: string
+                required:
+                  - response
+        '400':
+          description: Нет `receipt_id` / нет аккаунта / нужна повторная авторизация / неподходящее время
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Чек не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '504':
+          description: Instagram недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - SMM
+      summary: Привязать пост к чеку
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                media_id:
+                  type: string
+                receipt_id:
+                  type: string
+              required:
+                - media_id
+                - receipt_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_id:
+                  type: string
+                receipt_id:
+                  type: string
+              required:
+                - media_id
+                - receipt_id
+      responses:
+        '200':
+          description: Сообщение об успешной привязке
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '400':
+          description: Нет параметров / пост уже привязан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Чек не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/block/receipt:
+    post:
+      tags:
+        - SMM
+      summary: Временно заблокировать чек под публикацию
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                receipt_id:
+                  type: string
+              required:
+                - receipt_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                receipt_id:
+                  type: string
+              required:
+                - receipt_id
+      responses:
+        '200':
+          description: Время блокировки, сек.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: integer
+                required:
+                  - response
+        '400':
+          description: Нет `receipt_id` / нет аккаунта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Чек не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /smm/block/receipt/confirm:
+    post:
+      tags:
+        - SMM
+      summary: Подтвердить блокировку чека
+      security:
+        - appToken: []
+          bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                receipt_id:
+                  type: string
+              required:
+                - receipt_id
+          application/json:
+            schema:
+              type: object
+              properties:
+                receipt_id:
+                  type: string
+              required:
+                - receipt_id
+      responses:
+        '200':
+          description: Успешный ответ
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                required:
+                  - response
+        '400':
+          description: Нет `receipt_id`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 'Не авторизован: нет/неверный `X-APP-TOKEN` или `Authorization`, токен просрочен, пользователь заблокирован или удалён'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Чек/блокировка не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    appToken:
+      type: apiKey
+      in: header
+      name: X-APP-TOKEN
+      description: Токен приложения (проекта) в виде `Bearer <app_token>`. Нужен для всех методов.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'access_token пользователя из `/token/*`. Заголовок `Authorization: Bearer <access_token>`.'
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+      description: Формат ошибки. Тексты сообщений — на русском/английском, как возвращает сервер.
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Время жизни access_token, сек.
+        token_type:
+          type: string
+          example: bearer
+        refresh_token:
+          type: string
+      required:
+        - access_token
+        - expires_in
+        - token_type
+        - refresh_token
+    MessengerStart:
+      type: object
+      properties:
+        id_token:
+          type: string
+          description: Одноразовый токен; затем передаётся в соответствующий метод `/token/{provider}`. Для `/people/phone/verify/telegram/start` поле называется `token`.
+        expires_in:
+          type: integer
+        token_type:
+          type: string
+          enum:
+            - telegram
+            - whatsapp
+            - max
+        url:
+          type: string
+          description: Deep-link в мессенджер (`tg://`, `https://wa.me/…`, `https://max.ru/…`)
+      required:
+        - id_token
+        - expires_in
+        - token_type
+        - url
+    People:
+      type: object
+      properties:
+        id:
+          type: number
+        mobile_phone:
+          type: string
+        email:
+          type: string
+        instagram_user_id:
+          type: string
+        instagram_user_name:
+          type: string
+        instagram_need_auth:
+          type: boolean
+          description: Нужна повторная авторизация Instagram
+        favorite_store:
+          type: object
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+          description: С v1.3
+        pos_print_check:
+          type: string
+          enum:
+            - always
+            - never
+          description: С v1.28. Только если в проекте печать чека настраивается в профиле.
+      required:
+        - id
+    Account:
+      type: object
+      properties:
+        id:
+          type: integer
+        balance:
+          type: integer
+        level_name:
+          type: string
+        subtitle:
+          type: string
+        level_rate:
+          type: number
+        next_level_name:
+          type: string
+        next_level_condition:
+          type: number
+          description: Сколько осталось набрать до следующего уровня
+        can_have_social_bonus:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+          description: С v1.2
+        time_limited_bonuses:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              balance:
+                type: number
+              date_to:
+                type: string
+                format: date-time
+              expired:
+                type: boolean
+            description: С v1.2
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        expiring_bonuses:
+          type: object
+          additionalProperties: true
+          description: С v1.3. Сгорающие бонусы (в ближайшие дни)
+      required:
+        - id
+        - balance
+        - can_have_social_bonus
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        account_id:
+          type: integer
+        time:
+          type: string
+          format: date-time
+        debit_summ:
+          type: number
+        credit_summ:
+          type: number
+        store_id:
+          type: integer
+        reason_logo_uri:
+          type: string
+        receipt_id:
+          type: string
+          description: UUID чека
+        receipt_rated:
+          type: boolean
+        social_level_id:
+          type: integer
+        social_bonus:
+          type: number
+        social_bonus_not_after:
+          type: string
+          format: date-time
+    Advert:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        date_from:
+          type: string
+          format: date-time
+        date_to:
+          type: string
+          format: date-time
+        description:
+          type: string
+        index_image_uri:
+          type: string
+        image_uri:
+          type: string
+        viewed_at:
+          type: string
+          format: date-time
+          description: Только для авторизованного пользователя, если просмотрено
+      required:
+        - id
+        - name
+    AdvertCounter:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        subtitle:
+          type: string
+        date_from:
+          type: string
+          format: date-time
+        date_to:
+          type: string
+          format: date-time
+        content_uri:
+          type: string
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              progress_description:
+                type: string
+              gift_description:
+                type: string
+              image_url:
+                type: string
+              score:
+                type: integer
+        repeatable:
+          type: boolean
+        iteration:
+          type: integer
+        current_progress:
+          type: integer
+      required:
+        - id
+        - title
+    Banner:
+      type: object
+      properties:
+        id:
+          type: integer
+        date_from:
+          type: string
+          format: date-time
+        date_to:
+          type: string
+          format: date-time
+        timeout:
+          type: integer
+          description: Часы до повторного показа
+        uri:
+          type: string
+      required:
+        - id
+        - uri
+    News:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        date:
+          type: string
+          format: date-time
+        text:
+          type: string
+        image_uri:
+          type: string
+        viewed_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - date
+        - text
+    Coupon:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Идентификатор (UUID или число для групповых купонов)
+        date_from:
+          type: string
+          format: date-time
+        date_to:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        type_name:
+          type: string
+        description:
+          type: string
+        image_uri:
+          type: string
+        viewed_at:
+          type: string
+          format: date-time
+        stores:
+          type: array
+          items:
+            type: integer
+        target:
+          type: string
+          enum:
+            - order
+            - receipt
+          description: С v1.22
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              product_id:
+                type: integer
+              kind:
+                type: string
+              value: {}
+              count_max:
+                type: integer
+              priority:
+                type: integer
+      required:
+        - id
+        - date_from
+        - date_to
+        - active
+        - type_name
+    Store:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        city:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        work_times:
+          type: string
+        coordinates:
+          type: array
+          items:
+            type: number
+          description: '[lat, lng]'
+        priority:
+          type: integer
+          description: С v1.12
+        use_products:
+          type: boolean
+          description: С v1.20
+        use_orders:
+          type: boolean
+          description: С v1.20
+        deny_pickup:
+          type: boolean
+          description: С v1.23
+        city_guid:
+          type: string
+          description: С v1.30
+        working_hours:
+          type: object
+          description: С v1.30. Ключ — день недели.
+          additionalProperties:
+            type: object
+            properties:
+              start:
+                type: string
+                example: '09:00'
+              end:
+                type: string
+              break_start:
+                type: string
+              break_end:
+                type: string
+        additional_info:
+          type: string
+          description: С v1.30
+        timezone:
+          description: С v1.30. Смещение часового пояса
+      required:
+        - id
+    ProductGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        priority:
+          type: integer
+        image_uri:
+          type: string
+        children:
+          type: array
+          items:
+            type: integer
+      required:
+        - id
+        - name
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        group_id:
+          type: integer
+        name:
+          type: string
+        subtitle:
+          type: string
+        priority:
+          type: integer
+        short_description:
+          type: string
+        description:
+          type: string
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        old_price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: С v1.30. Цена до акции
+        image_uri:
+          type: string
+        multiple_of:
+          type: number
+        mods:
+          type: array
+          items:
+            type: integer
+          description: Идентификаторы модификаторов
+        allow_to_sell:
+          type: boolean
+        stores:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              store_id:
+                type: integer
+              allow_to_sell:
+                type: boolean
+              price:
+                type: string
+                pattern: ^-?\d+\.\d{2}$
+                example: '199.00'
+                description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+              old_price:
+                type: string
+                pattern: ^-?\d+\.\d{2}$
+                example: '199.00'
+                description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        measure_name:
+          type: string
+          description: С v1.27
+        show_price_per_serving:
+          type: boolean
+          description: С v1.27
+        recommended_home:
+          type: boolean
+          description: С v1.30
+        recommended_cart:
+          type: boolean
+          description: С v1.30
+        require_add_to_cart:
+          type: boolean
+          description: С v1.30
+      required:
+        - id
+        - name
+    ProductMod:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        required:
+          type: boolean
+        quantity_mod: {}
+        image_uri:
+          type: string
+        multiple:
+          type: boolean
+          description: С v1.26
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductModDetail'
+      required:
+        - id
+        - name
+        - details
+    ProductModDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        position:
+          type: integer
+        quantity_multiplier: {}
+        image_uri:
+          type: string
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: С v1.26
+      required:
+        - id
+        - name
+    PaymentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type: {}
+        online:
+          type: boolean
+        image_uri:
+          type: string
+        provider:
+          type: string
+          description: Тип платёжной системы (tinkoff, sberbank, …)
+        username:
+          type: string
+        public_key:
+          type: string
+        test_mode:
+          type: boolean
+        use_two_stage:
+          type: boolean
+        use_auto_payments:
+          type: boolean
+        payment_system_id:
+          type: integer
+          description: С v1.24
+        sber_pay_merchant_login:
+          type: string
+          description: С v1.30, только для App2App
+        sber_pay_api_key:
+          type: string
+          description: С v1.30, только для App2App
+      required:
+        - id
+        - name
+        - online
+    PaymentTool:
+      type: object
+      properties:
+        id:
+          type: integer
+        payment_system_id:
+          type: integer
+        external_id:
+          type: string
+        pan:
+          type: string
+          description: Маскированный номер карты
+        expiration:
+          type: string
+          format: date-time
+        verified:
+          type: boolean
+      required:
+        - id
+    ShipmentMethod:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        image_uri:
+          type: string
+        require_store:
+          type: boolean
+        require_address:
+          type: boolean
+        price_mode:
+          type: string
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        free_order_amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        min_order_mode:
+          type: string
+        min_order_amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        type:
+          type: string
+          description: С v1.23
+      required:
+        - id
+        - name
+    ShipmentCalc:
+      type: object
+      properties:
+        address_id:
+          type: integer
+        min_order_amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: '`-1.00`, если доставка по адресу недоступна'
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        free_order_amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        nearest_store_id:
+          type: integer
+        valid_until:
+          type: string
+          format: date-time
+      required:
+        - address_id
+    PeopleAddress:
+      type: object
+      properties:
+        id:
+          type: integer
+        city_guid:
+          type: string
+        city_name:
+          type: string
+        street_name:
+          type: string
+        house:
+          type: string
+        flat:
+          type: string
+        floor:
+          type: string
+        entrance:
+          type: string
+        comment:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+      required:
+        - id
+    OrderProductMod:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_mod_id:
+          type: integer
+        product_mod_name:
+          type: string
+        product_mod_detail_id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        quantity:
+          type: number
+        amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        image_uri:
+          type: string
+        deleted:
+          type: boolean
+    OrderProduct:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        name:
+          type: string
+        price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        quantity:
+          type: number
+        amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        image_uri:
+          type: string
+        deleted:
+          type: boolean
+        coupon_id:
+          type: string
+        coupon_item_id:
+          type: integer
+        mods:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderProductMod'
+    OrderPayment:
+      type: object
+      properties:
+        id:
+          type: integer
+        provider:
+          type: string
+        external_id:
+          type: string
+        amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        state:
+          type: string
+          example: new
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        store_id:
+          type: integer
+        state:
+          type: string
+        payment_state:
+          type: string
+        subtotal:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        shipment_price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        shipment_address:
+          type: integer
+          description: id адреса
+        shipment_method:
+          type: integer
+          description: id способа доставки
+        shipment_date:
+          type: string
+          format: date
+        shipment_time:
+          type: string
+          example: '18:30'
+        shipment_time_window:
+          type: object
+          properties:
+            id:
+              type: integer
+            since:
+              type: string
+            until:
+              type: string
+          description: До v1.21 — число (id окна)
+        payment_method:
+          type: integer
+        payment_tool:
+          type: integer
+        comments:
+          type: string
+        verify_code:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderProduct'
+        coupons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Coupon'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderPayment'
+        receipts:
+          type: array
+          items:
+            type: string
+          description: UUID чеков
+      required:
+        - id
+        - state
+        - payment_state
+        - amount
+    OrderInput:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        store:
+          type: integer
+          description: id магазина
+        shipment_method:
+          type: integer
+        shipment_address:
+          type: integer
+        shipment_date:
+          type: string
+          format: date
+        shipment_time:
+          type: string
+          example: '18:30'
+        shipment_time_window:
+          type: integer
+        payment_method:
+          type: integer
+        payment_tool:
+          type: integer
+        comments:
+          type: string
+        subtotal:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: С v1.22
+        shipment_price:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: С v1.22
+        amount:
+          type: string
+          pattern: ^-?\d+\.\d{2}$
+          example: '199.00'
+          description: С v1.22
+        coupons:
+          type: array
+          items:
+            type: string
+        products:
+          type: array
+          items:
+            type: object
+            properties:
+              product:
+                type: integer
+              quantity:
+                type: number
+              price:
+                type: string
+                pattern: ^-?\d+\.\d{2}$
+                example: '199.00'
+                description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+              amount:
+                type: string
+                pattern: ^-?\d+\.\d{2}$
+                example: '199.00'
+                description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+              coupon:
+                type: string
+              coupon_item:
+                type: integer
+              mods:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_mod_detail:
+                      type: integer
+                    quantity:
+                      type: number
+                    price:
+                      type: string
+                      pattern: ^-?\d+\.\d{2}$
+                      example: '199.00'
+                      description: Сумма в рублях строкой с двумя знаками (внутри хранится в копейках).
+            required:
+              - product
+              - quantity
+      required:
+        - name
+        - phone
+        - email
+        - shipment_method
+        - products
+      description: Ключи в snake_case (сервер преобразует в camelCase формы). Сочетания обязательных полей зависят от способа доставки (`require_store`, `require_address`).
+    Poll:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        need_join:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+        position:
+          type: integer
+        text:
+          type: string
+        image_uri:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+        viewed_at:
+          type: string
+          format: date-time
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PollQuestion'
+      required:
+        - id
+        - name
+    PollQuestion:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          type: string
+          description: Виджет вопроса
+        position:
+          type: integer
+        required:
+          type: boolean
+    SocialAccountLevel:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        rate:
+          type: number
+        button_text:
+          type: string
+        splash_text:
+          type: string
+        is_allow_exists_media:
+          type: boolean
+        is_allow_system_media:
+          type: boolean
+        is_allow_user_media:
+          type: boolean
+        overlay_logo_uri:
+          type: string
+    Settings:
+      type: object
+      properties:
+        auth_providers:
+          type: array
+          items:
+            type: string
+          description: firebase_phone, telegram, apple, …
+        birthday:
+          type: object
+          properties:
+            immutable:
+              type: boolean
+            percent:
+              type: number
+            days_before:
+              type: integer
+            days_after:
+              type: integer
+          description: С v1.5
+        theme:
+          type: object
+          additionalProperties: true
+          description: С v1.6. Цвета приложения
+        allow_sign_out:
+          type: boolean
+          description: С v1.8
+        use_smm:
+          type: boolean
+          description: С v1.11
+        term_of_use:
+          type: string
+          description: С v1.13. URL соглашения
+        show_card:
+          type: boolean
+          description: С v1.20
+        use_products:
+          type: boolean
+        use_common_products:
+          type: boolean
+        use_orders:
+          type: boolean
+        orders:
+          type: object
+          properties:
+            shipment_datetime_kind:
+              type: string
+            shipment_datetime_delay:
+              type: integer
+            min_amount: {}
+            max_days:
+              type: integer
+            shipment_cities:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+          description: Только если включены заказы
+        use_chat:
+          type: boolean
+          description: С v1.25
+        telegram_bot_name:
+          type: string
+      required:
+        - auth_providers
+    Versions:
+      type: object
+      additionalProperties:
+        type: string
+        format: date-time
+      description: 'Словарь «раздел → дата последнего изменения». Клиент перезагружает раздел, если дата изменилась. Набор ключей зависит от версии API, авторизации и настроек проекта: settings, stores, adverts, banners, news, social_account_levels, people, coupons, accounts, polls, products, product_mods, payment_methods, shipment_methods, addresses, payment_tools, orders.'
+      example:
+        settings: '2026-10-01T12:00:00+03:00'
+        stores: '2026-10-20T09:30:00+03:00'
+        news: '2026-10-22T15:00:00+03:00'
+    GeoPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
