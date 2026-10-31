@@ -35,6 +35,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/krasikra_test
       PAYLOAD_SECRET: ci-only-secret-not-used-anywhere-else
       NEXT_PUBLIC_SERVER_URL: http://127.0.0.1:8080
+      RUN: bash .github/scripts/run.sh
     steps:
       - uses: actions/checkout@v4
 
@@ -51,96 +52,56 @@ jobs:
         run: echo "SETTINGS_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        id: install
+        run: $RUN install pnpm install --frozen-lockfile
 
       - name: Generated files are up to date
-        run: |
-          pnpm run generate:xlabel-types
-          pnpm run generate:importmap
-          pnpm run generate:types
-          pnpm payload migrate:create schema-check --skip-empty --force-accept-warning
-          if [ -n "$(git status --porcelain)" ]; then
-            git status --porcelain
-            git --no-pager diff --stat
-            echo "::error::Generated files are stale or a migration is missing. Push a commit with [regen] (and [migration:<name>] for schema changes) in its message."
-            exit 1
-          fi
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN generated-files bash .github/scripts/check-generated.sh
 
       - name: Lint
-        run: pnpm run lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN lint pnpm run lint
 
       - name: Type check
-        run: pnpm run typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN typecheck pnpm run typecheck
 
       - name: Unit tests
-        run: pnpm run test:unit
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN unit-tests pnpm run test:unit
 
       - name: Apply migrations to an empty database
-        run: pnpm run migrate
+        id: migrate
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN migrate pnpm run migrate
 
       - name: Integration tests (PostgreSQL)
-        run: pnpm run test:int
+        if: ${{ !cancelled() && steps.migrate.outcome == 'success' }}
+        run: $RUN integration-tests pnpm run test:int
 
       - name: Build
-        run: pnpm run build
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: $RUN build pnpm run build
 
       - name: Smoke test of the production server
-        run: |
-          cp -r public .next/standalone/
-          cp -r .next/static .next/standalone/.next/
-          check() {
-            local name="$1"; shift
-            (cd .next/standalone && env NODE_ENV=production PORT=8080 HOSTNAME=127.0.0.1 "$@" node server.js > "/tmp/server-$name.log" 2>&1 &)
-            for i in $(seq 1 60); do curl -fs http://127.0.0.1:8080/healthz >/dev/null && break; sleep 1; done
-          }
-          stop() { pkill -f "node server.js" || true; sleep 2; }
-
-          check noindex
-          curl -fsS http://127.0.0.1:8080/healthz
-          curl -fsSI http://127.0.0.1:8080/ | tee /tmp/home.txt
-          grep -qi '^x-robots-tag: noindex' /tmp/home.txt
-          curl -fsS http://127.0.0.1:8080/robots.txt | tee /tmp/robots.txt
-          grep -q 'Disallow: /' /tmp/robots.txt
-          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/admin)
-          echo "admin: $code"; case "$code" in 200|302|307) ;; *) cat /tmp/server-noindex.log; exit 1;; esac
-          curl -fsS http://127.0.0.1:8080/ | grep -q 'Хозяин Камчатки'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/api/globals/xlabel-integration/check-connection)
-          echo "check-connection without login: $code"; [ "$code" = "403" ]
-          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/globals/xlabel-integration)
-          echo "global without login: $code"; [ "$code" = "403" ]
-          stop
-
-          check indexed NOINDEX=false
-          curl -fsSI http://127.0.0.1:8080/ | tee /tmp/home2.txt
-          if grep -qi '^x-robots-tag' /tmp/home2.txt; then echo "X-Robots-Tag must be absent with NOINDEX=false"; exit 1; fi
-          stop
-
-      - name: Server logs
-        if: failure()
-        run: cat /tmp/server-*.log || true
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.migrate.outcome == 'success' }}
+        run: $RUN smoke bash .github/scripts/smoke.sh
 
   docker:
     name: Docker image
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      RUN: bash .github/scripts/run.sh
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
       - name: Build image (linux/amd64, as for Yandex Cloud)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          provenance: false
-          sbom: false
-          tags: krasikra-web:ci
-          build-args: APP_VERSION=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: >-
+          $RUN docker-build docker build --progress=plain --platform linux/amd64
+          --build-arg APP_VERSION=${{ github.sha }} -t krasikra-web:ci .
 
       - name: Container starts and answers on PORT
         run: |
@@ -151,9 +112,9 @@ jobs:
           for i in $(seq 1 60); do curl -fs http://127.0.0.1:8080/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:8080/healthz | grep -q '"status":"ok"'
           curl -fsSI http://127.0.0.1:8080/healthz | grep -qi '^x-robots-tag: noindex'
-          docker exec web id -u | grep -qv '^0$'
+          test "$(docker exec web id -u)" != "0"
           docker image inspect krasikra-web:ci --format 'Image size: {{.Size}} bytes'
 
       - name: Container logs
         if: failure()
-        run: docker logs web || true
+        run: $RUN container-logs bash -c 'docker logs web; exit 1' || true
