@@ -47,7 +47,16 @@ start() {
 
 stop() {
   pkill -f "node server.js" || true
-  sleep 2
+  # Next.js shuts down gracefully; wait until the ports are really free.
+  for _ in $(seq 1 30); do
+    if ! "${CURL[@]}" -fo /dev/null "$BASE/healthz" 2>/dev/null &&
+      ! "${CURL[@]}" -fo /dev/null "http://127.0.0.1:8081/healthz" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  pkill -9 -f "node server.js" || true
+  sleep 1
 }
 
 expect_code() {
