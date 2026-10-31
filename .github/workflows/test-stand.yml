@@ -1,0 +1,108 @@
+# Build the image on every pull request; deploy main to the test stand.
+# Auth: GitHub OIDC -> Yandex Cloud Workload Identity Federation (no keys stored in GitHub).
+# Cloud side is configured by infra/yc/setup-ci.sh, see docs/infra/test-stand.md.
+name: Test stand
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: # docs-only commits do not redeploy
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FOLDER_ID: b1ghi207b5unmot9jler
+  REGISTRY: cr.yandex/crpctlodpodsi49b12cm
+  IMAGE_NAME: krasikra-web
+  CONTAINER_NAME: krasikra-web
+  RUNTIME_SA_ID: ajeaghsfme6fi2g3j6es # krasikra-web-sa: pulls the image, reads Lockbox
+  CI_SA_ID: "" # krasikra-ci-sa: printed by infra/yc/setup-ci.sh
+  LOCKBOX_SECRET: krasikra-web-test
+  STAND_URL: https://bbao7qlt20srpoj954vk.containers.yandexcloud.net
+
+jobs:
+  build:
+    name: Build image
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build
+        run: docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg GIT_SHA="$GITHUB_SHA" -t "$IMAGE_NAME:ci" .
+
+      - name: Smoke test
+        run: |
+          # Non-default port proves the app honours PORT.
+          docker run -d --name web -e PORT=9090 -p 8080:9090 "$IMAGE_NAME:ci"
+          for _ in $(seq 1 20); do curl -fsS http://localhost:8080/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8080/healthz | grep -q "$GITHUB_SHA"
+          curl -fsSI http://localhost:8080/ | tee headers.txt
+          grep -qi '^x-robots-tag: noindex' headers.txt
+
+  deploy:
+    name: Deploy to test stand
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: test-stand
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC token for Yandex Cloud
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check configuration
+        run: |
+          if [ -z "$CI_SA_ID" ]; then
+            echo "::error::CI_SA_ID is empty. Run infra/yc/setup-ci.sh and put the printed ID into this workflow."
+            exit 1
+          fi
+
+      - name: Log in to Container Registry
+        uses: yc-actions/yc-cr-login@ee42362bcacb854964afa3a3180ca8ae6dd388f8 # v3.0.2
+        with:
+          yc-sa-id: ${{ env.CI_SA_ID }}
+
+      - name: Build and push
+        id: image
+        run: |
+          tag="$(date -u +%Y%m%d-%H%M)-${GITHUB_SHA::7}"
+          image="$REGISTRY/$IMAGE_NAME:$tag"
+          docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg GIT_SHA="$GITHUB_SHA" -t "$image" .
+          docker push "$image"
+          echo "url=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy revision
+        uses: yc-actions/yc-sls-container-deploy@4d43a2554afca02dca947a10fc29ae6239378c55 # v5.0.0
+        with:
+          yc-sa-id: ${{ env.CI_SA_ID }}
+          folder-id: ${{ env.FOLDER_ID }}
+          container-name: ${{ env.CONTAINER_NAME }}
+          revision-image-url: ${{ steps.image.outputs.url }}
+          revision-service-account-id: ${{ env.RUNTIME_SA_ID }}
+          revision-cores: 1
+          revision-memory: 512Mb
+          revision-core-fraction: 100
+          revision-concurrency: 4
+          revision-execution-timeout: 30
+          revision-env: |
+            APP_ENV=test
+          revision-secrets: |
+            PAYLOAD_SECRET=${{ env.LOCKBOX_SECRET }}/latest/PAYLOAD_SECRET
+            SETTINGS_ENCRYPTION_KEY=${{ env.LOCKBOX_SECRET }}/latest/SETTINGS_ENCRYPTION_KEY
+
+      - name: Check the stand runs this commit
+        run: |
+          for _ in $(seq 1 20); do
+            curl -fsS "$STAND_URL/healthz" | grep -q "$GITHUB_SHA" && { echo "Stand runs $GITHUB_SHA"; exit 0; }
+            sleep 6
+          done
+          echo "::error::Stand does not report commit $GITHUB_SHA on /healthz"
+          exit 1

@@ -1,0 +1,6 @@
+.git
+.github
+docs
+infra
+node_modules
+*.md
